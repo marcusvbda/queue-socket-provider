@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Socket Client Example</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        input, textarea, button {
+            width: 100%;
+            padding: 10px;
+            margin: 5px 0;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button.disconnect {
+            background-color: #f44336;
+        }
+        button.disconnect:hover {
+            background-color: #da190b;
+        }
+        #messages {
+            height: 300px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 10px;
+            background-color: #f9f9f9;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .message {
+            margin: 5px 0;
+            padding: 5px;
+            border-left: 3px solid #4CAF50;
+            background-color: white;
+        }
+        .error {
+            border-left-color: #f44336;
+        }
+        .info {
+            border-left-color: #2196F3;
+        }
+        label {
+            display: block;
+            margin-top: 10px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>Socket.io Client Example</h1>
+
+    <div class="section">
+        <h2>Connection</h2>
+        <label>Server URL:</label>
+        <input type="text" id="serverUrl" value="http://localhost:3000" placeholder="http://localhost:3000">
+        
+        <label>API Token:</label>
+        <input type="password" id="apiToken" placeholder="Your API token">
+        
+        <label>Channel (optional):</label>
+        <input type="text" id="channel" placeholder="my-channel">
+        
+        <label>User ID (optional):</label>
+        <input type="text" id="userId" placeholder="user-123">
+        
+        <button onclick="connect()">Connect</button>
+        <button class="disconnect" onclick="disconnect()">Disconnect</button>
+    </div>
+
+    <div class="section">
+        <h2>Connection Status</h2>
+        <div id="status">Disconnected</div>
+        <div id="connectionInfo" style="margin-top: 10px; padding: 10px; background-color: #f0f0f0; border-radius: 5px; font-size: 12px;"></div>
+    </div>
+
+    <div class="section">
+        <h2>Send Message</h2>
+        <label>Event Name:</label>
+        <input type="text" id="eventName" value="message" placeholder="event-name">
+        
+        <label>Message Data (JSON):</label>
+        <textarea id="messageData" rows="4" placeholder='{"text": "Hello World"}'></textarea>
+        
+        <button onclick="sendMessage()">Send Message</button>
+    </div>
+
+    <div class="section">
+        <h2>Messages</h2>
+        <div id="messages"></div>
+        <button onclick="clearMessages()">Clear</button>
+    </div>
+
+    <script>
+        let socket = null;
+
+        function addMessage(message, type = 'message') {
+            const messagesDiv = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}`;
+            messageDiv.textContent = `[${new Date().toLocaleTimeString()}] ${JSON.stringify(message, null, 2)}`;
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function updateStatus(status, connected = false) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = status;
+            statusDiv.style.color = connected ? '#4CAF50' : '#f44336';
+        }
+
+        function connect() {
+            const serverUrl = document.getElementById('serverUrl').value;
+            const token = document.getElementById('apiToken').value;
+            const channel = document.getElementById('channel').value;
+            const userId = document.getElementById('userId').value;
+
+            if (!token) {
+                alert('API Token is required!');
+                return;
+            }
+
+            if (socket) {
+                socket.disconnect();
+            }
+
+            const query = {};
+            if (channel) query.channel = channel;
+            if (userId) query.userId = userId;
+
+            socket = io(serverUrl, {
+                path: '/socket.io',
+                auth: {
+                    token: token
+                },
+                query: query
+            });
+
+            socket.on('connect', () => {
+                addMessage('Connected to server', 'info');
+                updateStatus('Connected', true);
+            });
+
+            socket.on('disconnect', () => {
+                addMessage('Disconnected from server', 'info');
+                updateStatus('Disconnected', false);
+            });
+
+            socket.on('connected', (data) => {
+                const infoDiv = document.getElementById('connectionInfo');
+                if (infoDiv && data) {
+                    infoDiv.innerHTML = `
+                        <strong>Channel:</strong> ${data.channel || 'N/A'}<br>
+                        <strong>User ID:</strong> ${data.userId || 'N/A'}<br>
+                        <strong>Socket ID:</strong> ${data.socketId || 'N/A'}<br>
+                        <small>Use this Channel and User ID in Postman dispatch so this client receives the event.</small>
+                    `;
+                }
+            });
+
+            socket.on('connect_error', (error) => {
+                addMessage({ event: 'connect_error', error: error.message }, 'error');
+                updateStatus('Connection Error', false);
+            });
+
+            // Single place that shows ALL received events (including API-dispatched ones)
+            socket.onAny((eventName, ...args) => {
+                if (['connect', 'disconnect', 'connect_error', 'error'].includes(eventName)) return;
+                const payload = args.length === 1 ? args[0] : args;
+                addMessage({ event: eventName, data: payload }, 'info');
+            });
+        }
+
+        function disconnect() {
+            if (socket) {
+                socket.disconnect();
+                socket = null;
+                updateStatus('Disconnected', false);
+            }
+        }
+
+        function sendMessage() {
+            if (!socket || !socket.connected) {
+                alert('Not connected!');
+                return;
+            }
+
+            const eventName = document.getElementById('eventName').value || 'message';
+            let messageData = {};
+
+            try {
+                const dataText = document.getElementById('messageData').value;
+                if (dataText) {
+                    messageData = JSON.parse(dataText);
+                }
+            } catch (e) {
+                alert('Invalid JSON in message data!');
+                return;
+            }
+
+            socket.emit('message', {
+                event: eventName,
+                data: messageData
+            });
+
+            addMessage({ sent: { event: eventName, data: messageData } }, 'info');
+        }
+
+        function clearMessages() {
+            document.getElementById('messages').innerHTML = '';
+        }
+    </script>
+</body>
+</html>
