@@ -1,0 +1,166 @@
+---
+description: Security practices and environment variable management
+alwaysApply: true
+---
+
+# Security & Environment Variables
+
+## Environment Variables
+
+- **NEVER** commit credentials, API keys, or secrets to code
+- Always use `.env` files for local development
+- Create `.env.example` with placeholder values (no real secrets)
+- Load environment variables using `dotenv` or similar
+- Validate required environment variables at startup
+
+```typescript
+// ✅ GOOD - .env.example
+DATABASE_URL=postgresql://user:password@localhost:5432/dbname
+REDIS_URL=redis://localhost:6379
+JWT_SECRET=your-secret-key-here
+PORT=3000
+NODE_ENV=development
+
+// ✅ GOOD - Loading and validation
+import { config } from 'dotenv';
+import { z } from 'zod';
+
+config(); // Load .env file
+
+const envSchema = z.object({
+  DATABASE_URL: z.string().url(),
+  REDIS_URL: z.string().url(),
+  JWT_SECRET: z.string().min(32),
+  PORT: z.coerce.number().default(3000),
+  NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+});
+
+export const env = envSchema.parse(process.env);
+```
+
+## Secrets Management
+
+- Use environment variables for all secrets
+- Never hardcode passwords, tokens, or API keys
+- Use different secrets for different environments
+- Rotate secrets regularly
+- Use secret management services in production (AWS Secrets Manager, etc.)
+
+```typescript
+// ❌ BAD - NEVER DO THIS
+const API_KEY = 'sk_live_1234567890abcdef';
+const DB_PASSWORD = 'mypassword123';
+
+// ✅ GOOD
+const API_KEY = process.env.API_KEY;
+if (!API_KEY) {
+  throw new Error('API_KEY environment variable is required');
+}
+```
+
+## Input Validation
+
+- Always validate and sanitize user input
+- Use schema validation libraries (Zod, TypeBox, Joi)
+- Reject invalid input early
+- Never trust client-side validation alone
+
+```typescript
+// ✅ GOOD
+import { z } from 'zod';
+
+const createUserSchema = z.object({
+  email: z.string().email(),
+  name: z.string().min(1).max(100),
+  age: z.number().int().min(18).max(120),
+});
+
+fastify.post('/users', async (request, reply) => {
+  const validated = createUserSchema.parse(request.body);
+  // Use validated data
+});
+```
+
+## Authentication & Authorization
+
+- Use JWT tokens with proper expiration
+- Store tokens securely (httpOnly cookies when possible)
+- Implement proper password hashing (bcrypt, argon2)
+- Use HTTPS in production
+- Implement rate limiting
+
+```typescript
+// ✅ GOOD
+import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
+
+const hashPassword = async (password: string): Promise<string> => {
+  const saltRounds = 12;
+  return bcrypt.hash(password, saltRounds);
+};
+
+const verifyPassword = async (
+  password: string,
+  hash: string
+): Promise<boolean> => {
+  return bcrypt.compare(password, hash);
+};
+
+const generateToken = (userId: string): string => {
+  return jwt.sign(
+    { userId },
+    process.env.JWT_SECRET!,
+    { expiresIn: '24h' }
+  );
+};
+```
+
+## SQL Injection Prevention
+
+- Use parameterized queries
+- Never concatenate user input into SQL
+- Use ORMs or query builders with parameter binding
+
+```typescript
+// ❌ BAD
+const query = `SELECT * FROM users WHERE email = '${email}'`;
+
+// ✅ GOOD
+const query = 'SELECT * FROM users WHERE email = $1';
+const result = await db.query(query, [email]);
+```
+
+## CORS Configuration
+
+- Configure CORS properly
+- Don't use wildcard origins in production
+- Specify allowed methods and headers
+
+```typescript
+// ✅ GOOD
+await fastify.register(require('@fastify/cors'), {
+  origin: process.env.ALLOWED_ORIGINS?.split(',') || [],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+});
+```
+
+## Security Headers
+
+- Set security headers (helmet.js for Express/Fastify)
+- Use HTTPS in production
+- Implement CSRF protection when needed
+
+```typescript
+// ✅ GOOD
+import helmet from '@fastify/helmet';
+
+await fastify.register(helmet, {
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+    },
+  },
+});
+```

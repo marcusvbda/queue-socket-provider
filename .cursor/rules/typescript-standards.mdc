@@ -1,0 +1,92 @@
+---
+description: TypeScript coding standards and best practices
+globs: **/*.ts
+alwaysApply: true
+---
+
+# TypeScript Standards
+
+## Type Safety
+
+- Always use explicit types for function parameters and return types
+- Avoid `any` - use `unknown` when type is truly unknown, then narrow it
+- Use type guards and assertions when necessary
+- Prefer interfaces for object shapes, types for unions/intersections
+
+```typescript
+// ❌ BAD
+function processData(data: any) {
+  return data.value;
+}
+
+// ✅ GOOD
+function processData(data: { value: number }): number {
+  return data.value;
+}
+```
+
+## Error Handling
+
+- Always handle errors explicitly
+- Use custom error classes for domain-specific errors
+- Never use empty catch blocks
+- Log errors with context
+
+```typescript
+// ❌ BAD
+try {
+  await fetchData();
+} catch (e) {}
+
+// ✅ GOOD
+try {
+  await fetchData();
+} catch (error) {
+  logger.error('Failed to fetch data', { error, context: 'user-action' });
+  throw new DataFetchError('Unable to retrieve data', { cause: error });
+}
+```
+
+## Async/Await
+
+- Prefer async/await over Promise chains
+- Always handle promise rejections
+- Use Promise.all for parallel operations when appropriate
+
+```typescript
+// ❌ BAD
+fetchData().then(data => processData(data));
+
+// ✅ GOOD
+const data = await fetchData();
+const result = processData(data);
+```
+
+## Code Organization
+
+- Use named exports for better tree-shaking
+- Group related functionality in modules
+- Keep functions small and focused (single responsibility)
+- Use const assertions for immutable data
+
+```typescript
+// ✅ GOOD
+export const CONFIG = {
+  maxRetries: 3,
+  timeout: 5000,
+} as const;
+```
+
+## Null Safety
+
+- Use optional chaining (`?.`) and nullish coalescing (`??`)
+- Explicitly handle null/undefined cases
+- Use non-null assertions (`!`) sparingly and only when certain
+
+```typescript
+// ❌ BAD
+const value = obj.property.value;
+
+// ✅ GOOD
+const value = obj?.property?.value ?? defaultValue;
+```

@@ -1,0 +1,35 @@
+name = "queue-socket-provider"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+
+# Run: npx wrangler d1 create queue-socket-db
+# Then set database_id below from the command output.
+[[d1_databases]]
+binding = "DB"
+database_name = "queue-socket-db"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "./migrations"
+
+# Run: npx wrangler queues create postback-queue
+[[queues.producers]]
+queue = "postback-queue"
+binding = "POSTBACK_QUEUE"
+
+[[queues.consumers]]
+queue = "postback-queue"
+max_batch_size = 10
+max_batch_timeout = 30
+max_retries = 3
+
+[[durable_objects.bindings]]
+name = "SOCKET_MANAGER"
+class_name = "SocketManager"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["SocketManager"]
+
+[vars]
+ALLOWED_ORIGINS = "*"
+
+# Set API_TOKEN via: npx wrangler secret put API_TOKEN

@@ -64,6 +64,23 @@ npm start
 
 O servidor estará rodando em `http://localhost:3000`
 
+### Cloudflare Workers
+
+A mesma API e comportamento (queue + socket dispatch) podem rodar no Cloudflare Workers. O cliente de exemplo suporta ambos: Socket.io (Node) e WebSocket nativo (Worker).
+
+```bash
+cd worker
+npm install
+# Configure wrangler.toml (D1 database_id após criar com wrangler d1 create)
+npx wrangler d1 migrations apply queue-socket-db
+npx wrangler queues create postback-queue
+npx wrangler secret put API_TOKEN
+npm run dev
+# ou npm run deploy
+```
+
+Ver [worker/README.md](worker/README.md) para detalhes.
+
 ## 📚 Documentação da API
 
 ### Autenticação

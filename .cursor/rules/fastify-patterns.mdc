@@ -1,0 +1,139 @@
+---
+description: Fastify framework patterns and best practices
+globs: **/*.ts
+alwaysApply: true
+---
+
+# Fastify Patterns
+
+## Route Registration
+
+- Use async route handlers
+- Register routes in plugins for better organization
+- Use TypeBox or Zod for schema validation
+- Return proper HTTP status codes
+
+```typescript
+// ✅ GOOD
+import { FastifyInstance } from 'fastify';
+import { Type, Static } from '@sinclair/typebox';
+
+const CreateUserSchema = Type.Object({
+  name: Type.String({ minLength: 1 }),
+  email: Type.String({ format: 'email' }),
+});
+
+async function userRoutes(fastify: FastifyInstance) {
+  fastify.post('/users', {
+    schema: {
+      body: CreateUserSchema,
+      response: {
+        201: CreateUserSchema,
+      },
+    },
+  }, async (request, reply) => {
+    const user = await createUser(request.body);
+    return reply.code(201).send(user);
+  });
+}
+
+export default userRoutes;
+```
+
+## Error Handling
+
+- Use Fastify's error handling hooks
+- Create custom error classes extending FastifyError
+- Return consistent error response format
+- Log errors appropriately
+
+```typescript
+// ✅ GOOD
+import { FastifyError, FastifyRequest, FastifyReply } from 'fastify';
+
+class NotFoundError extends Error implements FastifyError {
+  statusCode = 404;
+  code = 'NOT_FOUND';
+  
+  constructor(message: string) {
+    super(message);
+    this.name = 'NotFoundError';
+  }
+}
+
+fastify.setErrorHandler((error: FastifyError, request, reply) => {
+  logger.error('Request error', { error, url: request.url });
+  
+  reply.status(error.statusCode ?? 500).send({
+    error: error.code ?? 'INTERNAL_ERROR',
+    message: error.message,
+  });
+});
+```
+
+## Plugins and Decorators
+
+- Use plugins to organize functionality
+- Use decorators to extend Fastify instance with custom properties
+- Register plugins in dependency order
+
+```typescript
+// ✅ GOOD
+import { FastifyInstance, FastifyPluginOptions } from 'fastify';
+
+async function databasePlugin(
+  fastify: FastifyInstance,
+  options: FastifyPluginOptions
+) {
+  const db = await connectDatabase();
+  fastify.decorate('db', db);
+  
+  fastify.addHook('onClose', async () => {
+    await db.close();
+  });
+}
+
+declare module 'fastify' {
+  interface FastifyInstance {
+    db: Database;
+  }
+}
+```
+
+## Request/Response Types
+
+- Use TypeScript to type request bodies, params, and queries
+- Leverage Fastify's type system for type safety
+
+```typescript
+// ✅ GOOD
+interface CreateUserBody {
+  name: string;
+  email: string;
+}
+
+interface UserParams {
+  id: string;
+}
+
+fastify.post<{ Body: CreateUserBody }>('/users', async (request, reply) => {
+  const { name, email } = request.body; // Fully typed
+  // ...
+});
+```
+
+## Performance
+
+- Use async/await (Fastify handles it efficiently)
+- Register schemas for automatic serialization
+- Use compression plugin for production
+- Enable request logging only in development
+
+```typescript
+// ✅ GOOD
+import fastifyCompress from '@fastify/compress';
+
+if (process.env.NODE_ENV === 'production') {
+  await fastify.register(fastifyCompress);
+}
+```

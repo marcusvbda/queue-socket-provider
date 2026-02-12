@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Socket Client Example</title>
-    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -68,21 +67,26 @@
     </style>
 </head>
 <body>
-    <h1>Socket.io Client Example</h1>
+    <h1>Socket Client Example</h1>
+    <p><small>Works with Cloudflare Workers (WebSocket at /ws) or Node server (Socket.io at /socket.io).</small></p>
 
     <div class="section">
         <h2>Connection</h2>
         <label>Server URL:</label>
-        <input type="text" id="serverUrl" value="http://localhost:3000" placeholder="http://localhost:3000">
+        <input type="text" id="serverUrl" value="http://localhost:3000" placeholder="http://localhost:3000 or https://your-worker.workers.dev">
         
         <label>API Token:</label>
         <input type="password" id="apiToken" placeholder="Your API token">
         
         <label>Channel (optional):</label>
-        <input type="text" id="channel" placeholder="my-channel">
+        <input type="text" id="channel" placeholder="channel-abc123">
         
         <label>User ID (optional):</label>
-        <input type="text" id="userId" placeholder="user-123">
+        <input type="text" id="userId" placeholder="user-xyz789">
+        
+        <label>Use WebSocket (Worker):</label>
+        <input type="checkbox" id="useWebSocket"> Use native WebSocket (/ws) – só para <strong>Cloudflare Worker</strong>
+        <p style="margin: 4px 0 0 0; font-size: 12px; color: #666;">Para o servidor Node (localhost:3000) deixe desmarcado (usa Socket.io). Marque apenas se a URL for do Worker (ex.: https://seu-worker.workers.dev).</p>
         
         <button onclick="connect()">Connect</button>
         <button class="disconnect" onclick="disconnect()">Disconnect</button>
@@ -111,8 +115,11 @@
         <button onclick="clearMessages()">Clear</button>
     </div>
 
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <script>
         let socket = null;
+        let ws = null;
+        let useWebSocket = true;
 
         function addMessage(message, type = 'message') {
             const messagesDiv = document.getElementById('messages');
@@ -129,19 +136,81 @@
             statusDiv.style.color = connected ? '#4CAF50' : '#f44336';
         }
 
+        function buildWsUrl(serverUrl, token, channel, userId) {
+            const base = serverUrl.replace(/^http/, 'ws');
+            const url = new URL(base);
+            // Worker exposes /ws at the root; avoid double slash or wrong path
+            url.pathname = (url.pathname === '/' || url.pathname === '') ? '/ws' : url.pathname.replace(/\/?$/, '') + '/ws';
+            url.searchParams.set('token', token);
+            if (channel) url.searchParams.set('channel', channel);
+            if (userId) url.searchParams.set('userId', userId);
+            return url.toString();
+        }
+
         function connect() {
-            const serverUrl = document.getElementById('serverUrl').value;
+            const serverUrl = document.getElementById('serverUrl').value.trim();
             const token = document.getElementById('apiToken').value;
-            const channel = document.getElementById('channel').value;
-            const userId = document.getElementById('userId').value;
+            const channel = document.getElementById('channel').value.trim();
+            const userId = document.getElementById('userId').value.trim();
+            useWebSocket = document.getElementById('useWebSocket').checked;
 
             if (!token) {
                 alert('API Token is required!');
                 return;
             }
 
-            if (socket) {
-                socket.disconnect();
+            disconnect();
+
+            if (useWebSocket) {
+                const wsUrl = buildWsUrl(serverUrl, token, channel, userId);
+                addMessage({ connecting: 'WebSocket', url: wsUrl }, 'info');
+                ws = new WebSocket(wsUrl);
+
+                ws.onopen = () => {
+                    addMessage('Connected to server', 'info');
+                    updateStatus('Connected', true);
+                };
+
+                ws.onclose = (event) => {
+                    const reason = event.reason || ('code ' + event.code);
+                    if (event.code !== 1000) {
+                        addMessage({ event: 'disconnect', code: event.code, reason: reason, wasClean: event.wasClean }, 'error');
+                    } else {
+                        addMessage('Disconnected from server', 'info');
+                    }
+                    updateStatus('Disconnected', false);
+                    ws = null;
+                };
+
+                ws.onerror = () => {
+                    addMessage({ event: 'connect_error', error: 'WebSocket error. Verifique: URL do Worker, token e se o Worker está no ar.' }, 'error');
+                    updateStatus('Connection Error', false);
+                };
+
+                ws.onmessage = (event) => {
+                    try {
+                        const msg = JSON.parse(event.data);
+                        if (msg.type === 'connected') {
+                            const infoDiv = document.getElementById('connectionInfo');
+                            if (infoDiv && msg) {
+                                infoDiv.innerHTML = `
+                                    <strong>Channel:</strong> ${msg.channel || 'N/A'}<br>
+                                    <strong>User ID:</strong> ${msg.userId || 'N/A'}<br>
+                                    <strong>Socket ID:</strong> ${msg.socketId || 'N/A'}<br>
+                                    <small>Use this Channel and User ID in Postman dispatch so this client receives the event.</small>
+                                `;
+                            }
+                            addMessage({ event: 'connected', data: msg }, 'info');
+                        } else if (msg.event !== undefined) {
+                            addMessage({ event: msg.event, data: msg }, 'info');
+                        } else {
+                            addMessage(msg, 'info');
+                        }
+                    } catch {
+                        addMessage(event.data, 'info');
+                    }
+                };
+                return;
             }
 
             const query = {};
@@ -150,9 +219,7 @@
 
             socket = io(serverUrl, {
                 path: '/socket.io',
-                auth: {
-                    token: token
-                },
+                auth: { token: token },
                 query: query
             });
 
@@ -183,7 +250,6 @@
                 updateStatus('Connection Error', false);
             });
 
-            // Single place that shows ALL received events (including API-dispatched ones)
             socket.onAny((eventName, ...args) => {
                 if (['connect', 'disconnect', 'connect_error', 'error'].includes(eventName)) return;
                 const payload = args.length === 1 ? args[0] : args;
@@ -192,36 +258,39 @@
         }
 
         function disconnect() {
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
             if (socket) {
                 socket.disconnect();
                 socket = null;
-                updateStatus('Disconnected', false);
             }
+            updateStatus('Disconnected', false);
         }
 
         function sendMessage() {
-            if (!socket || !socket.connected) {
+            const connected = useWebSocket ? (ws && ws.readyState === WebSocket.OPEN) : (socket && socket.connected);
+            if (!connected) {
                 alert('Not connected!');
                 return;
             }
 
             const eventName = document.getElementById('eventName').value || 'message';
             let messageData = {};
-
             try {
                 const dataText = document.getElementById('messageData').value;
-                if (dataText) {
-                    messageData = JSON.parse(dataText);
-                }
+                if (dataText) messageData = JSON.parse(dataText);
             } catch (e) {
                 alert('Invalid JSON in message data!');
                 return;
             }
 
-            socket.emit('message', {
-                event: eventName,
-                data: messageData
-            });
+            if (useWebSocket && ws) {
+                ws.send(JSON.stringify({ type: 'message', event: eventName, data: messageData }));
+            } else if (socket) {
+                socket.emit('message', { event: eventName, data: messageData });
+            }
 
             addMessage({ sent: { event: eventName, data: messageData } }, 'info');
         }

@@ -1,0 +1,217 @@
+---
+description: Clean code principles and maintainability best practices
+alwaysApply: true
+---
+
+# Clean Code & Maintainability
+
+## Code Organization
+
+- Keep functions small and focused (single responsibility principle)
+- Use meaningful variable and function names
+- Group related functionality together
+- Separate concerns (business logic vs infrastructure)
+
+```typescript
+// ❌ BAD
+function process(data: any) {
+  // 200 lines of mixed concerns
+}
+
+// ✅ GOOD
+function validateUserInput(input: UserInput): ValidationResult {
+  // Only validation logic
+}
+
+function createUser(userData: ValidatedUserData): Promise<User> {
+  // Only user creation logic
+}
+```
+
+## Naming Conventions
+
+- Use descriptive names that explain intent
+- Avoid abbreviations unless widely understood
+- Use verbs for functions, nouns for variables/classes
+- Use constants for magic numbers/strings
+
+```typescript
+// ❌ BAD
+const d = new Date();
+const u = getUser();
+const MAX = 100;
+
+// ✅ GOOD
+const currentDate = new Date();
+const authenticatedUser = await getUser();
+const MAX_RETRY_ATTEMPTS = 100;
+```
+
+## Comments & Documentation
+
+- Write self-documenting code (code should explain itself)
+- Add comments only when code cannot be self-explanatory
+- Document public APIs with JSDoc
+- Keep comments up-to-date with code changes
+
+```typescript
+// ❌ BAD
+// Increment i
+i++;
+
+// ✅ GOOD
+// No comment needed - code is clear
+retryAttemptCount++;
+
+// ✅ GOOD - Complex logic needs explanation
+// Using Floyd's cycle detection algorithm to detect infinite loops
+// in the state machine without storing all visited states
+function detectCycle(state: State): boolean {
+  // Implementation...
+}
+```
+
+## DRY (Don't Repeat Yourself)
+
+- Extract common logic into reusable functions
+- Use constants for repeated values
+- Create utility functions for common operations
+- Avoid copy-paste code
+
+```typescript
+// ❌ BAD
+if (user.role === 'admin' || user.role === 'moderator') {
+  // ...
+}
+if (user.role === 'admin' || user.role === 'moderator') {
+  // ...
+}
+
+// ✅ GOOD
+const PRIVILEGED_ROLES = ['admin', 'moderator'] as const;
+
+function hasPrivilegedAccess(user: User): boolean {
+  return PRIVILEGED_ROLES.includes(user.role);
+}
+
+if (hasPrivilegedAccess(user)) {
+  // ...
+}
+```
+
+## Error Handling
+
+- Handle errors at appropriate levels
+- Provide meaningful error messages
+- Log errors with context
+- Don't swallow errors silently
+
+```typescript
+// ❌ BAD
+try {
+  await riskyOperation();
+} catch (e) {
+  // Silent failure
+}
+
+// ✅ GOOD
+try {
+  await riskyOperation();
+} catch (error) {
+  logger.error('Failed to perform operation', {
+    error,
+    operation: 'riskyOperation',
+    userId: user.id,
+  });
+  throw new OperationError('Operation failed', { cause: error });
+}
+```
+
+## Testing
+
+- Write tests for critical business logic
+- Keep tests simple and focused
+- Use descriptive test names
+- Test edge cases and error scenarios
+
+```typescript
+// ✅ GOOD
+describe('UserService', () => {
+  describe('createUser', () => {
+    it('should create user with valid data', async () => {
+      const userData = { email: 'test@example.com', name: 'Test User' };
+      const user = await userService.createUser(userData);
+      
+      expect(user).toMatchObject(userData);
+      expect(user.id).toBeDefined();
+    });
+    
+    it('should throw error for duplicate email', async () => {
+      const userData = { email: 'existing@example.com', name: 'Test' };
+      
+      await expect(userService.createUser(userData)).rejects.toThrow(
+        DuplicateEmailError
+      );
+    });
+  });
+});
+```
+
+## Code Formatting
+
+- Use consistent formatting (Prettier, ESLint)
+- Follow project style guide
+- Format on save
+- Keep line length reasonable (80-120 chars)
+
+## Refactoring
+
+- Refactor when you see code smells
+- Extract methods when functions are too long
+- Remove dead code
+- Simplify complex conditionals
+
+```typescript
+// ❌ BAD
+if (user && user.active && user.verified && user.role === 'admin') {
+  // ...
+}
+
+// ✅ GOOD
+function canAccessAdminPanel(user: User | null): boolean {
+  return user?.active && user?.verified && user?.role === 'admin';
+}
+
+if (canAccessAdminPanel(user)) {
+  // ...
+}
+```
+
+## Dependencies
+
+- Keep dependencies up-to-date
+- Remove unused dependencies
+- Prefer well-maintained libraries
+- Document why specific dependencies are used
+
+## Logging
+
+- Use structured logging
+- Log at appropriate levels (debug, info, warn, error)
+- Include context in logs
+- Don't log sensitive information
+
+```typescript
+// ✅ GOOD
+logger.info('User created', {
+  userId: user.id,
+  email: user.email, // Safe to log
+  // Never log: password, tokens, credit cards
+});
+
+logger.error('Database connection failed', {
+  error: error.message,
+  host: process.env.DB_HOST,
+  // Don't log: connection string with password
+});
+```
